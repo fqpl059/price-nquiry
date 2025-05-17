@@ -4,128 +4,101 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Leitor de Código de Barras EAN-13</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-            background-color: #f4f4f4;
+            font-family: 'Inter', sans-serif; /* Tailwind geralmente usa Inter por padrão, mas é bom garantir */
         }
-        .container {
-            background-color: #fff;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 500px;
-        }
-        h1 {
-            text-align: center;
-            color: #333;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #555;
-        }
-        input[type="number"], input[type="text"] {
-            width: calc(100% - 22px);
-            padding: 10px;
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            padding: 12px 18px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-right: 10px;
-            transition: background-color 0.3s ease;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        #cameraButton {
-            background-color: #28a745;
-        }
-        #cameraButton:hover {
-            background-color: #1e7e34;
-        }
-        #stopCameraButton {
-            background-color: #dc3545;
-            display: none; /* Hidden by default */
-        }
-        #stopCameraButton:hover {
-            background-color: #c82333;
-        }
-        #videoContainer {
-            margin-top: 20px;
-            position: relative;
-            width: 100%;
-            max-width: 400px; /* Adjust as needed */
-            margin-left: auto;
-            margin-right: auto;
-            display: none; /* Hidden by default */
-        }
+        /* Estilos adicionais se Tailwind não cobrir tudo ou para overrides específicos */
         #video {
             width: 100%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            height: auto;
+            border-radius: 0.5rem; /* rounded-lg */
         }
-        #result, #status {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 4px;
-            text-align: center;
-            font-size: 1.1em;
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        #status {
-            background-color: #e9ecef;
-            color: #495057;
+        .message-box.success {
+            background-color: #28a745; /* Verde */
         }
-        #result.success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .message-box.error {
+            background-color: #dc3545; /* Vermelho */
         }
-        #result.error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+        .message-box.info {
+            background-color: #17a2b8; /* Azul info */
+        }
+        /* Estilo para o spinner/loading */
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s ease infinite;
+            display: none; /* Oculto por padrão */
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
         }
     </style>
     <script type="text/javascript" src="https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js"></script>
 </head>
-<body>
-    <div class="container">
-        <h1>Leitor EAN-13</h1>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
-        <label for="eanInput">Código EAN-13 Manual:</label>
-        <input type="number" id="eanInput" placeholder="Digite o código de 13 dígitos" maxlength="13">
-        <button id="submitManualButton">Enviar Manualmente</button>
+    <div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-lg">
+        <h1 class="text-2xl sm:text-3xl font-bold text-center text-gray-800 mb-6">Consultar Produto por EAN</h1>
 
-        <hr style="margin: 20px 0;">
+        <div id="messageBox" class="message-box"></div>
 
-        <button id="cameraButton">Ler com a Câmera</button>
-        <button id="stopCameraButton">Parar Câmera</button>
-
-        <div id="videoContainer">
-            <video id="video"></video>
+        <div class="mb-6">
+            <label for="eanInput" class="block text-sm font-medium text-gray-700 mb-1">Código EAN-13 Manual:</label>
+            <input type="text" id="eanInput" inputmode="numeric" pattern="[0-9]*" placeholder="Digite os 13 dígitos" maxlength="13" class="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            <button id="submitManualButton" class="mt-3 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-150 ease-in-out">
+                Enviar Manualmente
+            </button>
         </div>
 
-        <div id="status">Aguardando ação...</div>
-        <div id="result"></div>
+        <hr class="my-6 border-gray-300">
+
+        <div class="mb-4 text-center">
+            <button id="cameraButton" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-150 ease-in-out">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm10.5 10.707l2.293 2.293a1 1 0 01-1.414 1.414l-2.293-2.293a5.5 5.5 0 111.414-1.414zM10 14a4 4 0 100-8 4 4 0 000 8z" clip-rule="evenodd" />
+                </svg>
+                Ler com a Câmera
+            </button>
+            <button id="stopCameraButton" class="mt-3 w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-150 ease-in-out" style="display: none;">
+                Parar Câmera
+            </button>
+        </div>
+
+        <div id="videoContainer" class="mb-4 w-full max-w-md mx-auto" style="display: none;">
+            <video id="video" class="border-2 border-gray-300 rounded-lg"></video>
+        </div>
+
+        <div id="loadingSpinner" class="spinner"></div>
+
+        <div id="status" class="mt-4 text-center text-gray-600 text-sm p-3 bg-gray-50 rounded-lg">Aguardando ação...</div>
+        <div id="result" class="mt-2 text-center font-semibold p-4 rounded-lg"></div>
     </div>
 
     <script>
+        // Elementos do DOM
         const eanInput = document.getElementById('eanInput');
         const submitManualButton = document.getElementById('submitManualButton');
         const cameraButton = document.getElementById('cameraButton');
@@ -134,16 +107,28 @@
         const videoElement = document.getElementById('video');
         const statusDiv = document.getElementById('status');
         const resultDiv = document.getElementById('result');
+        const messageBox = document.getElementById('messageBox');
+        const loadingSpinner = document.getElementById('loadingSpinner');
 
-        const API_BASE_URL = 'http://192.168.0.39:9991'; // Seu endereço de API
+        const API_BASE_URL = 'http://192.168.0.39:9991'; // Endereço da API
 
         let codeReader = null;
-        let stream = null;
+        let currentStream = null; // Renomeado para evitar conflito com 'stream' global
+
+        // Função para exibir mensagens globais
+        function showMessage(message, type = 'info', duration = 3000) {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`; // Adiciona a classe do tipo (success, error, info)
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, duration);
+        }
 
         // Função para validar o dígito verificador do EAN-13
         function validateEAN13Checksum(ean) {
             if (typeof ean !== 'string' || ean.length !== 13 || !/^\d+$/.test(ean)) {
-                return false;
+                return false; // Não é uma string de 13 dígitos numéricos
             }
             let sum = 0;
             for (let i = 0; i < 12; i++) {
@@ -157,52 +142,63 @@
         async function fetchProductInfo(ean) {
             statusDiv.textContent = `Buscando produto com EAN: ${ean}...`;
             resultDiv.textContent = '';
-            resultDiv.className = '';
+            resultDiv.className = 'mt-2 text-center font-semibold p-4 rounded-lg'; // Reset classes
+            loadingSpinner.style.display = 'block'; // Mostrar spinner
 
             try {
                 const response = await fetch(`${API_BASE_URL}?ean=${ean}`);
+                const responseText = await response.text(); // Ler como texto primeiro
+
                 if (response.ok) {
-                    const textResponse = await response.text(); // A API pode retornar texto simples
                     // Tenta interpretar como JSON, se falhar, usa como texto
+                    let productData = null;
                     try {
-                        const data = JSON.parse(textResponse);
-                        if (data.price) {
-                             resultDiv.textContent = `Preço: R$ ${parseFloat(data.price).toFixed(2)}`;
-                        } else if (data.message) {
-                            resultDiv.textContent = data.message;
-                        } else {
-                            // Se for apenas o preço como texto direto
-                           resultDiv.textContent = `Preço: ${textResponse}`;
-                        }
-                        resultDiv.className = 'success';
+                        productData = JSON.parse(responseText);
                     } catch (e) {
-                        // Se não for JSON, mas a resposta foi OK, pode ser o preço direto ou uma mensagem de sucesso
-                        if (textResponse.toLowerCase().includes("não encontrado") || textResponse.toLowerCase().includes("nao encontrado")) {
-                            resultDiv.textContent = `Produto não encontrado para o EAN: ${ean}`;
-                            resultDiv.className = 'error';
-                        } else if (textResponse) {
-                            resultDiv.textContent = `Resposta: ${textResponse}`; // Exibe o preço ou outra info
-                            resultDiv.className = 'success';
-                        } else {
-                            resultDiv.textContent = 'Resposta vazia da API.';
-                            resultDiv.className = 'error';
-                        }
+                        // Não é JSON, pode ser texto simples (preço ou mensagem)
                     }
+
+                    if (productData && productData.price) {
+                        resultDiv.textContent = `Preço: R$ ${parseFloat(productData.price).toFixed(2)}`;
+                        resultDiv.classList.add('bg-green-100', 'text-green-700');
+                    } else if (productData && productData.message) {
+                        resultDiv.textContent = productData.message;
+                        if (productData.message.toLowerCase().includes("não encontrado")) {
+                             resultDiv.classList.add('bg-yellow-100', 'text-yellow-700');
+                        } else {
+                             resultDiv.classList.add('bg-green-100', 'text-green-700');
+                        }
+                    } else if (!productData && responseText) { // Resposta OK, mas não JSON e com texto
+                        if (responseText.toLowerCase().includes("não encontrado") || responseText.toLowerCase().includes("nao encontrado")) {
+                            resultDiv.textContent = `Produto não encontrado para o EAN: ${ean}`;
+                            resultDiv.classList.add('bg-yellow-100', 'text-yellow-700');
+                        } else {
+                             // Assumir que é o preço ou uma mensagem de sucesso
+                            resultDiv.textContent = `Info: ${responseText}`;
+                            resultDiv.classList.add('bg-green-100', 'text-green-700');
+                        }
+                    } else {
+                        resultDiv.textContent = 'Resposta da API não reconhecida, mas bem-sucedida.';
+                        resultDiv.classList.add('bg-blue-100', 'text-blue-700');
+                    }
+                    statusDiv.textContent = `Busca concluída para EAN: ${ean}.`;
                 } else {
-                    let errorMsg = `Produto não encontrado (HTTP ${response.status})`;
-                    try {
-                        const errorData = await response.text();
-                        if(errorData) errorMsg = errorData; // Usa a mensagem da API se houver
-                    } catch (e) { /* ignore */ }
+                    // Erro na resposta HTTP (404, 500, etc.)
+                    let errorMsg = `Produto não encontrado ou erro na API (HTTP ${response.status})`;
+                    if(responseText) errorMsg = responseText; // Usa a mensagem da API se houver
 
                     resultDiv.textContent = errorMsg;
-                    resultDiv.className = 'error';
+                    resultDiv.classList.add('bg-red-100', 'text-red-700');
+                    statusDiv.textContent = 'Falha ao buscar informações do produto.';
                 }
             } catch (error) {
                 console.error('Erro ao chamar a API:', error);
-                resultDiv.textContent = 'Erro de conexão com a API. Verifique o console.';
-                resultDiv.className = 'error';
+                resultDiv.textContent = 'Erro de conexão com a API. Verifique o console e se a API está acessível.';
+                resultDiv.classList.add('bg-red-100', 'text-red-700');
                 statusDiv.textContent = 'Falha na comunicação com a API.';
+                showMessage('Erro de rede ao tentar acessar a API.', 'error');
+            } finally {
+                loadingSpinner.style.display = 'none'; // Esconder spinner
             }
         }
 
@@ -213,19 +209,48 @@
                 if (validateEAN13Checksum(eanValue)) {
                     fetchProductInfo(eanValue);
                 } else {
-                    statusDiv.textContent = 'Código EAN-13 manual inválido (dígito verificador incorreto).';
+                    showMessage('Código EAN-13 manual inválido (dígito verificador incorreto).', 'error');
+                    statusDiv.textContent = 'Dígito verificador incorreto.';
                     resultDiv.textContent = '';
-                    resultDiv.className = 'error';
                 }
             } else {
-                statusDiv.textContent = 'Por favor, insira um código EAN-13 válido (13 dígitos numéricos).';
+                showMessage('Por favor, insira um código EAN-13 válido (13 dígitos numéricos).', 'error');
+                statusDiv.textContent = 'Formato de EAN inválido.';
                 resultDiv.textContent = '';
-                 resultDiv.className = 'error';
             }
         });
 
+        // Adiciona listener para a tecla Enter no campo de input manual
+        eanInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Impede o comportamento padrão do Enter (ex: submeter formulário)
+                submitManualButton.click(); // Simula o clique no botão de envio
+            }
+        });
+
+
+        // Função para parar o scanner e a câmera
+        function stopScanner() {
+            if (codeReader) {
+                codeReader.reset(); // Para o processo de decodificação do ZXing
+            }
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop()); // Para cada faixa da stream da câmera
+                currentStream = null;
+            }
+            videoContainer.style.display = 'none';
+            videoElement.srcObject = null; // Limpa o srcObject do vídeo
+            cameraButton.style.display = 'block'; // Mostra o botão de iniciar
+            stopCameraButton.style.display = 'none'; // Esconde o botão de parar
+            statusDiv.textContent = 'Câmera parada. Aguardando ação...';
+        }
+
         // Iniciar a câmera e o leitor
         cameraButton.addEventListener('click', async () => {
+            if (!ZXing) {
+                showMessage('Biblioteca de scanner não carregada.', 'error');
+                return;
+            }
             if (!codeReader) {
                 codeReader = new ZXing.BrowserMultiFormatReader();
             }
@@ -233,97 +258,76 @@
             statusDiv.textContent = 'Iniciando câmera... Por favor, conceda permissão.';
             videoContainer.style.display = 'block';
             cameraButton.style.display = 'none';
-            stopCameraButton.style.display = 'inline-block';
+            stopCameraButton.style.display = 'block';
+            resultDiv.textContent = ''; // Limpa resultados anteriores
 
             try {
-                const videoInputDevices = await codeReader.listVideoInputDevices();
-                if (videoInputDevices.length > 0) {
-                    const firstDeviceId = videoInputDevices[0].deviceId;
-                    
-                    // Para obter a stream para parar depois
-                    navigator.mediaDevices.getUserMedia({ video: { deviceId: firstDeviceId } })
-                        .then(s => {
-                            stream = s; // Armazena a stream
-                            codeReader.decodeFromStream(stream, videoElement, (result, error, controls) => {
-                                if (result) {
-                                    const scannedText = result.getText();
-                                    console.log('Código lido:', scannedText);
-                                    statusDiv.textContent = `Código lido: ${scannedText}`;
-                                    
-                                    if (result.getBarcodeFormat() === ZXing.BarcodeFormat.EAN_13) {
-                                        if (validateEAN13Checksum(scannedText)) {
-                                            statusDiv.textContent = `EAN-13 válido: ${scannedText}. Buscando...`;
-                                            eanInput.value = scannedText; // Preenche o campo de input
-                                            fetchProductInfo(scannedText);
-                                            stopScanner(); // Para o scanner após sucesso
-                                        } else {
-                                            statusDiv.textContent = `Dígito verificador inválido para EAN-13: ${scannedText}`;
-                                            resultDiv.textContent = 'Tente escanear novamente.';
-                                            resultDiv.className = 'error';
-                                        }
-                                    } else {
-                                        statusDiv.textContent = `Código lido (${result.getBarcodeFormat()}): ${scannedText}. Esperando EAN-13.`;
-                                    }
-                                }
-                                if (error && !(error instanceof ZXing.NotFoundException)) {
-                                    console.error('Erro de leitura:', error);
-                                    statusDiv.textContent = 'Erro ao ler código de barras.';
-                                }
-                            });
-                            statusDiv.textContent = 'Aponte o código de barras para a câmera.';
-                        })
-                        .catch(err => {
-                            console.error('Erro ao acessar a câmera: ', err);
-                            statusDiv.textContent = 'Erro ao acessar a câmera. Verifique as permissões.';
-                            if (err.name === "NotAllowedError") {
-                                statusDiv.textContent = 'Permissão para câmera negada. Por favor, habilite nas configurações do navegador.';
-                            } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-                                statusDiv.textContent = 'Nenhuma câmera encontrada.';
+                // Pede permissão e obtém a stream
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' } // Prioriza a câmera traseira
+                });
+                videoElement.srcObject = currentStream; // Atribui a stream ao elemento de vídeo
+
+                statusDiv.textContent = 'Aponte o código de barras para a câmera.';
+
+                // Inicia a decodificação contínua
+                codeReader.decodeFromStream(currentStream, videoElement, (result, error, controls) => {
+                    if (result) {
+                        const scannedText = result.getText();
+                        console.log('Código lido:', scannedText, 'Formato:', result.getBarcodeFormat());
+                        statusDiv.textContent = `Código lido: ${scannedText}`;
+
+                        if (result.getBarcodeFormat() === ZXing.BarcodeFormat.EAN_13) {
+                            if (validateEAN13Checksum(scannedText)) {
+                                statusDiv.textContent = `EAN-13 válido: ${scannedText}. Buscando...`;
+                                eanInput.value = scannedText; // Preenche o campo de input
+                                fetchProductInfo(scannedText);
+                                stopScanner(); // Para o scanner após sucesso para evitar múltiplas leituras
+                                showMessage(`EAN ${scannedText} lido com sucesso!`, 'success');
+                            } else {
+                                statusDiv.textContent = `Dígito verificador inválido para EAN-13: ${scannedText}. Tente novamente.`;
+                                showMessage('Dígito verificador inválido. Tente escanear novamente.', 'error', 5000);
+                                // Não para o scanner, permite nova tentativa
                             }
-                             videoContainer.style.display = 'none';
-                             cameraButton.style.display = 'inline-block';
-                             stopCameraButton.style.display = 'none';
-                        });
+                        } else {
+                            statusDiv.textContent = `Código (${result.getBarcodeFormat()}) lido: ${scannedText}. Apenas EAN-13 é processado.`;
+                            // Não para o scanner, permite nova tentativa
+                        }
+                    }
+                    // Ignora NotFoundException, que ocorre quando nenhum código é encontrado no frame
+                    if (error && !(error instanceof ZXing.NotFoundException)) {
+                        console.error('Erro de leitura:', error);
+                        statusDiv.textContent = 'Erro ao ler código de barras. Tente novamente.';
+                        // Não para o scanner em caso de outros erros de leitura, permite nova tentativa.
+                        // Se for um erro crítico, pode ser necessário parar.
+                    }
+                });
 
-
-                } else {
-                    statusDiv.textContent = 'Nenhum dispositivo de vídeo encontrado.';
-                    videoContainer.style.display = 'none';
-                    cameraButton.style.display = 'inline-block';
-                    stopCameraButton.style.display = 'none';
-                }
             } catch (err) {
-                console.error('Erro ao iniciar o leitor de código de barras:', err);
-                statusDiv.textContent = 'Erro ao iniciar leitor. Verifique o console.';
-                videoContainer.style.display = 'none';
-                cameraButton.style.display = 'inline-block';
-                stopCameraButton.style.display = 'none';
+                console.error('Erro ao acessar a câmera ou iniciar o leitor:', err);
+                statusDiv.textContent = 'Erro ao acessar a câmera.';
+                if (err.name === "NotAllowedError") {
+                    showMessage('Permissão para câmera negada. Habilite nas configurações do navegador.', 'error', 5000);
+                    statusDiv.textContent = 'Permissão para câmera negada.';
+                } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                    showMessage('Nenhuma câmera encontrada no dispositivo.', 'error', 5000);
+                    statusDiv.textContent = 'Nenhuma câmera encontrada.';
+                } else {
+                    showMessage('Erro ao iniciar a câmera: ' + err.message, 'error', 5000);
+                }
+                stopScanner(); // Garante que tudo seja parado se houver erro na inicialização
             }
         });
 
-        // Parar a câmera e o leitor
-        function stopScanner() {
-            if (codeReader) {
-                codeReader.reset(); // Para o processo de decodificação
-            }
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop()); // Para a stream da câmera
-                stream = null;
-            }
-            videoContainer.style.display = 'none';
-            cameraButton.style.display = 'inline-block';
-            stopCameraButton.style.display = 'none';
-            statusDiv.textContent = 'Câmera parada. Aguardando ação...';
-        }
-
+        // Event listener para o botão de parar câmera
         stopCameraButton.addEventListener('click', stopScanner);
 
-        // Limpar o campo de input ao focar, se for numérico e contiver não-números
-        eanInput.addEventListener('focus', () => {
-            if (eanInput.type === 'number' && isNaN(parseFloat(eanInput.value))) {
-                eanInput.value = '';
-            }
+        // Limpar o campo de input EAN para aceitar apenas números
+        eanInput.addEventListener('input', function (e) {
+            // Remove caracteres não numéricos
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
         });
+
     </script>
 </body>
 </html>
