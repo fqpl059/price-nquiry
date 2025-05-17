@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitor de Código de Barras EAN-13</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="number"], input[type="text"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 18px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #cameraButton {
+            background-color: #28a745;
+        }
+        #cameraButton:hover {
+            background-color: #1e7e34;
+        }
+        #stopCameraButton {
+            background-color: #dc3545;
+            display: none; /* Hidden by default */
+        }
+        #stopCameraButton:hover {
+            background-color: #c82333;
+        }
+        #videoContainer {
+            margin-top: 20px;
+            position: relative;
+            width: 100%;
+            max-width: 400px; /* Adjust as needed */
+            margin-left: auto;
+            margin-right: auto;
+            display: none; /* Hidden by default */
+        }
+        #video {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        #result, #status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 1.1em;
+        }
+        #status {
+            background-color: #e9ecef;
+            color: #495057;
+        }
+        #result.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        #result.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+    <script type="text/javascript" src="https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Leitor EAN-13</h1>
+
+        <label for="eanInput">Código EAN-13 Manual:</label>
+        <input type="number" id="eanInput" placeholder="Digite o código de 13 dígitos" maxlength="13">
+        <button id="submitManualButton">Enviar Manualmente</button>
+
+        <hr style="margin: 20px 0;">
+
+        <button id="cameraButton">Ler com a Câmera</button>
+        <button id="stopCameraButton">Parar Câmera</button>
+
+        <div id="videoContainer">
+            <video id="video"></video>
+        </div>
+
+        <div id="status">Aguardando ação...</div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const eanInput = document.getElementById('eanInput');
+        const submitManualButton = document.getElementById('submitManualButton');
+        const cameraButton = document.getElementById('cameraButton');
+        const stopCameraButton = document.getElementById('stopCameraButton');
+        const videoContainer = document.getElementById('videoContainer');
+        const videoElement = document.getElementById('video');
+        const statusDiv = document.getElementById('status');
+        const resultDiv = document.getElementById('result');
+
+        const API_BASE_URL = 'http://192.168.0.39:9991'; // Seu endereço de API
+
+        let codeReader = null;
+        let stream = null;
+
+        // Função para validar o dígito verificador do EAN-13
+        function validateEAN13Checksum(ean) {
+            if (typeof ean !== 'string' || ean.length !== 13 || !/^\d+$/.test(ean)) {
+                return false;
+            }
+            let sum = 0;
+            for (let i = 0; i < 12; i++) {
+                sum += parseInt(ean[i]) * (i % 2 === 0 ? 1 : 3);
+            }
+            const checksum = (10 - (sum % 10)) % 10;
+            return checksum === parseInt(ean[12]);
+        }
+
+        // Função para buscar informações do produto na API
+        async function fetchProductInfo(ean) {
+            statusDiv.textContent = `Buscando produto com EAN: ${ean}...`;
+            resultDiv.textContent = '';
+            resultDiv.className = '';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}?ean=${ean}`);
+                if (response.ok) {
+                    const textResponse = await response.text(); // A API pode retornar texto simples
+                    // Tenta interpretar como JSON, se falhar, usa como texto
+                    try {
+                        const data = JSON.parse(textResponse);
+                        if (data.price) {
+                             resultDiv.textContent = `Preço: R$ ${parseFloat(data.price).toFixed(2)}`;
+                        } else if (data.message) {
+                            resultDiv.textContent = data.message;
+                        } else {
+                            // Se for apenas o preço como texto direto
+                           resultDiv.textContent = `Preço: ${textResponse}`;
+                        }
+                        resultDiv.className = 'success';
+                    } catch (e) {
+                        // Se não for JSON, mas a resposta foi OK, pode ser o preço direto ou uma mensagem de sucesso
+                        if (textResponse.toLowerCase().includes("não encontrado") || textResponse.toLowerCase().includes("nao encontrado")) {
+                            resultDiv.textContent = `Produto não encontrado para o EAN: ${ean}`;
+                            resultDiv.className = 'error';
+                        } else if (textResponse) {
+                            resultDiv.textContent = `Resposta: ${textResponse}`; // Exibe o preço ou outra info
+                            resultDiv.className = 'success';
+                        } else {
+                            resultDiv.textContent = 'Resposta vazia da API.';
+                            resultDiv.className = 'error';
+                        }
+                    }
+                } else {
+                    let errorMsg = `Produto não encontrado (HTTP ${response.status})`;
+                    try {
+                        const errorData = await response.text();
+                        if(errorData) errorMsg = errorData; // Usa a mensagem da API se houver
+                    } catch (e) { /* ignore */ }
+
+                    resultDiv.textContent = errorMsg;
+                    resultDiv.className = 'error';
+                }
+            } catch (error) {
+                console.error('Erro ao chamar a API:', error);
+                resultDiv.textContent = 'Erro de conexão com a API. Verifique o console.';
+                resultDiv.className = 'error';
+                statusDiv.textContent = 'Falha na comunicação com a API.';
+            }
+        }
+
+        // Event listener para envio manual
+        submitManualButton.addEventListener('click', () => {
+            const eanValue = eanInput.value.trim();
+            if (eanValue.length === 13 && /^\d+$/.test(eanValue)) {
+                if (validateEAN13Checksum(eanValue)) {
+                    fetchProductInfo(eanValue);
+                } else {
+                    statusDiv.textContent = 'Código EAN-13 manual inválido (dígito verificador incorreto).';
+                    resultDiv.textContent = '';
+                    resultDiv.className = 'error';
+                }
+            } else {
+                statusDiv.textContent = 'Por favor, insira um código EAN-13 válido (13 dígitos numéricos).';
+                resultDiv.textContent = '';
+                 resultDiv.className = 'error';
+            }
+        });
+
+        // Iniciar a câmera e o leitor
+        cameraButton.addEventListener('click', async () => {
+            if (!codeReader) {
+                codeReader = new ZXing.BrowserMultiFormatReader();
+            }
+
+            statusDiv.textContent = 'Iniciando câmera... Por favor, conceda permissão.';
+            videoContainer.style.display = 'block';
+            cameraButton.style.display = 'none';
+            stopCameraButton.style.display = 'inline-block';
+
+            try {
+                const videoInputDevices = await codeReader.listVideoInputDevices();
+                if (videoInputDevices.length > 0) {
+                    const firstDeviceId = videoInputDevices[0].deviceId;
+                    
+                    // Para obter a stream para parar depois
+                    navigator.mediaDevices.getUserMedia({ video: { deviceId: firstDeviceId } })
+                        .then(s => {
+                            stream = s; // Armazena a stream
+                            codeReader.decodeFromStream(stream, videoElement, (result, error, controls) => {
+                                if (result) {
+                                    const scannedText = result.getText();
+                                    console.log('Código lido:', scannedText);
+                                    statusDiv.textContent = `Código lido: ${scannedText}`;
+                                    
+                                    if (result.getBarcodeFormat() === ZXing.BarcodeFormat.EAN_13) {
+                                        if (validateEAN13Checksum(scannedText)) {
+                                            statusDiv.textContent = `EAN-13 válido: ${scannedText}. Buscando...`;
+                                            eanInput.value = scannedText; // Preenche o campo de input
+                                            fetchProductInfo(scannedText);
+                                            stopScanner(); // Para o scanner após sucesso
+                                        } else {
+                                            statusDiv.textContent = `Dígito verificador inválido para EAN-13: ${scannedText}`;
+                                            resultDiv.textContent = 'Tente escanear novamente.';
+                                            resultDiv.className = 'error';
+                                        }
+                                    } else {
+                                        statusDiv.textContent = `Código lido (${result.getBarcodeFormat()}): ${scannedText}. Esperando EAN-13.`;
+                                    }
+                                }
+                                if (error && !(error instanceof ZXing.NotFoundException)) {
+                                    console.error('Erro de leitura:', error);
+                                    statusDiv.textContent = 'Erro ao ler código de barras.';
+                                }
+                            });
+                            statusDiv.textContent = 'Aponte o código de barras para a câmera.';
+                        })
+                        .catch(err => {
+                            console.error('Erro ao acessar a câmera: ', err);
+                            statusDiv.textContent = 'Erro ao acessar a câmera. Verifique as permissões.';
+                            if (err.name === "NotAllowedError") {
+                                statusDiv.textContent = 'Permissão para câmera negada. Por favor, habilite nas configurações do navegador.';
+                            } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                                statusDiv.textContent = 'Nenhuma câmera encontrada.';
+                            }
+                             videoContainer.style.display = 'none';
+                             cameraButton.style.display = 'inline-block';
+                             stopCameraButton.style.display = 'none';
+                        });
+
+
+                } else {
+                    statusDiv.textContent = 'Nenhum dispositivo de vídeo encontrado.';
+                    videoContainer.style.display = 'none';
+                    cameraButton.style.display = 'inline-block';
+                    stopCameraButton.style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Erro ao iniciar o leitor de código de barras:', err);
+                statusDiv.textContent = 'Erro ao iniciar leitor. Verifique o console.';
+                videoContainer.style.display = 'none';
+                cameraButton.style.display = 'inline-block';
+                stopCameraButton.style.display = 'none';
+            }
+        });
+
+        // Parar a câmera e o leitor
+        function stopScanner() {
+            if (codeReader) {
+                codeReader.reset(); // Para o processo de decodificação
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop()); // Para a stream da câmera
+                stream = null;
+            }
+            videoContainer.style.display = 'none';
+            cameraButton.style.display = 'inline-block';
+            stopCameraButton.style.display = 'none';
+            statusDiv.textContent = 'Câmera parada. Aguardando ação...';
+        }
+
+        stopCameraButton.addEventListener('click', stopScanner);
+
+        // Limpar o campo de input ao focar, se for numérico e contiver não-números
+        eanInput.addEventListener('focus', () => {
+            if (eanInput.type === 'number' && isNaN(parseFloat(eanInput.value))) {
+                eanInput.value = '';
+            }
+        });
+    </script>
+</body>
+</html>
